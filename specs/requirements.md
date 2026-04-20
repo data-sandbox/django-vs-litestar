@@ -14,6 +14,44 @@ The system:
 
 ---
 
+## Demo & Documentation
+
+The primary deliverable for this project is a `README.md` intended to be read on GitHub by other developers evaluating Django vs Litestar.
+
+### README Structure
+
+The README combines two angles:
+
+1. **Quick start** — readers can clone, start the database, run backfill + process, and hit both servers. `curl` examples confirm identical JSON from both ports.
+
+2. **Side-by-side code comparisons** — five concrete diffs showing how each framework handles the same concern:
+   - Routing registration
+   - Serialization / response schema declaration
+   - Database session injection
+   - 404 error handling
+   - Query parameter validation
+
+### Placeholders in README.md
+
+The following items in `README.md` require updates once the relevant phases are complete:
+
+| Placeholder | Required by | Condition |
+|---|---|---|
+| GitHub repo URL in clone command | Phase 0 | Repo pushed to GitHub |
+| Screenshot: `migrate` terminal output | Phase 4 | CLI implemented |
+| Screenshot: structured log output from `backfill` + `process` | Phase 4 | CLI implemented |
+| Screenshot: side-by-side curl responses | Phase 5–6 | Both APIs running |
+| Screenshot: Django Swagger UI (`/api/schema/swagger-ui/`) | Phase 5 | Django API + drf-spectacular |
+| Screenshot: Litestar Swagger UI (`/schema/swagger`) | Phase 6 | Litestar API running |
+| Screenshot: `pytest -v` all-green output | Phase 7 | Test suite complete |
+| Code examples in comparison section | Phase 5–6 | Verify against actual implementation |
+
+### Summary Table (README target)
+
+The README ends with a scored table across: routing boilerplate, type safety, built-in OpenAPI, query param validation, and session injection ergonomics.
+
+---
+
 ## Functional Requirements
 
 ### 1. Data Ingestion
