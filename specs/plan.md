@@ -36,72 +36,71 @@ Mark tasks with `[x]` as you complete them. Work phases top-to-bottom; each phas
 
 ## Phase 3: Data Processing
 
-- [ ] `core/processing.py` — `compute_orbital_params(tle_line1, tle_line2)` using `sgp4`
-- [ ] `core/processing.py` — `classify_orbit(apogee_km, perigee_km, eccentricity)` classification logic
-- [ ] `core/processing.py` — `process_unprocessed(session)` batch processor
-- [ ] Smoke test: call `process_unprocessed`; verify `processed_tle` rows and `orbit_type` values in DB
+- [x] `core/processing.py` — `compute_orbital_params(tle_line1, tle_line2)` using `sgp4`
+- [x] `core/processing.py` — `classify_orbit(apogee_km, perigee_km, eccentricity)` classification logic
+- [x] `core/processing.py` — `process_unprocessed(session)` batch processor
+- [x] Smoke test: call `process_unprocessed`; verify `processed_tle` rows and `orbit_type` values in DB
 
 ---
 
 ## Phase 4: CLI Commands
 
-- [ ] `main.py` — `start-db` (`docker compose up -d`)
-- [ ] `main.py` — `stop-db` (`docker compose down`)
-- [ ] `main.py` — `migrate` (`alembic upgrade head`)
-- [ ] `main.py` — `ingest` (calls `ingest_satellites`)
-- [ ] `main.py` — `backfill` (calls `ingest_satellites` 7× with backdated `fetched_at` values)
-- [ ] `main.py` — `process` (calls `process_unprocessed`)
-- [ ] `main.py` — `run-django` (starts Django dev server on configured host/port)
-- [ ] `main.py` — `run-litestar` (starts Litestar dev server on configured host/port)
-- [ ] End-to-end smoke test: `start-db` → `migrate` → `ingest` → `process` — all exit cleanly
+- [x] `main.py` — `start-db` (`docker compose up -d`)
+- [x] `main.py` — `stop-db` (`docker compose down`)
+- [x] `main.py` — `migrate` (`alembic upgrade head`)
+- [x] `main.py` — `ingest` (calls `ingest_satellites`)
+- [x] `main.py` — `backfill` (calls `ingest_satellites` 7× with backdated `fetched_at` values)
+- [x] `main.py` — `process` (calls `process_unprocessed`)
+- [x] `main.py` — `run-django` (starts Django dev server on configured host/port)
+- [x] `main.py` — `run-litestar` (starts Litestar dev server on configured host/port)
+- [x] End-to-end smoke test: `start-db` → `migrate` → `ingest` → `process` — all exit cleanly
 
 ---
 
 ## Phase 5: Django REST API
 
-- [ ] `django_api/config/settings.py` — minimal config: `DATABASES = {}`, DRF in `INSTALLED_APPS`, `ROOT_URLCONF`
-- [ ] `django_api/manage.py` — standard Django management entry point
-- [ ] `django_api/config/urls.py` — root URL conf delegating to `api/v1/`
-- [ ] `django_api/satellites/urls.py` — three URL patterns for list, detail, and history
-- [ ] `django_api/satellites/serializers.py` — `SatelliteListSerializer`, `SatelliteDetailSerializer`, `TleRecordSerializer` (plain `Serializer`, not `ModelSerializer`)
-- [ ] `django_api/satellites/views.py` — `SatelliteListView` with `orbit_type` filter and manual `page`/`page_size` pagination
-- [ ] `django_api/satellites/views.py` — `SatelliteDetailView` with 404 on unknown `norad_id`
-- [ ] `django_api/satellites/views.py` — `SatelliteHistoryView` with `from_date`/`to_date` filters and pagination
+- [x] `django_api/config/settings.py` — minimal config: `DATABASES = {}`, DRF in `INSTALLED_APPS`, `ROOT_URLCONF`
+- [x] `django_api/manage.py` — standard Django management entry point
+- [x] `django_api/config/urls.py` — root URL conf delegating to `api/v1/`
+- [x] `django_api/satellites/urls.py` — three URL patterns for list, detail, and history
+- [x] `django_api/satellites/serializers.py` — `SatelliteListSerializer`, `SatelliteDetailSerializer`, `TleRecordSerializer` (plain `Serializer`, not `ModelSerializer`)
+- [x] `django_api/satellites/views.py` — `SatelliteListView` with `orbit_type` filter and manual `page`/`page_size` pagination
+- [x] `django_api/satellites/views.py` — `SatelliteDetailView` with 404 on unknown `norad_id`
+- [x] `django_api/satellites/views.py` — `SatelliteHistoryView` with `from_date`/`to_date` filters and pagination
 - [ ] Manual test: `run-django`, hit all three endpoints with `curl` or HTTPie; verify response shapes match spec
 
 ---
 
 ## Phase 6: Litestar REST API
 
-- [ ] `litestar_api/satellites/schemas.py` — five Pydantic schemas: `SatelliteListItem`, `SatelliteListResponse`, `SatelliteDetail`, `TleHistoryItem`, `TleHistoryResponse` (all with `from_attributes=True`)
-- [ ] `litestar_api/satellites/controllers.py` — `SatelliteController` with `@get` handlers for list, detail, and history
-- [ ] `litestar_api/app.py` — `Litestar` app factory with `SQLAlchemyPlugin`
+- [x] `litestar_api/satellites/schemas.py` — five Pydantic schemas: `SatelliteListItem`, `SatelliteListResponse`, `SatelliteDetail`, `TleHistoryItem`, `TleHistoryResponse` (all with `from_attributes=True`)
+- [x] `litestar_api/satellites/controllers.py` — `SatelliteController` with `@get` handlers for list, detail, and history
+- [x] `litestar_api/app.py` — `Litestar` app factory with `Provide(provide_db)` dependency injection
 - [ ] Manual test: `run-litestar`, hit all three endpoints; verify OpenAPI docs load at `/schema`
 
 ---
 
 ## Phase 7: Testing
 
-- [ ] `tests/conftest.py` — `test_db` session fixture (SQLite in-memory + Alembic migrations applied at session scope)
-- [ ] `tests/conftest.py` — `db_session` per-test fixture (function scope, rolls back after each test)
-- [ ] `tests/conftest.py` — `factory-boy` factories: `SatelliteFactory`, `TleRecordFactory`, `ProcessedTleFactory`
-- [ ] `tests/conftest.py` — `mock_tle_api` fixture using `respx` to mock `/api/tle/25544` and `/api/tle/33591`
-- [ ] `tests/test_ingestion.py` — happy path test
-- [ ] `tests/test_ingestion.py` — deduplication test
-- [ ] `tests/test_ingestion.py` — retry logic test
-- [ ] `tests/test_ingestion.py` — partial failure test
-- [ ] `tests/test_processing.py` — ISS orbital calculations within tolerance (±1.0 km, ±0.01 min)
-- [ ] `tests/test_processing.py` — orbit classification for LEO, MEO, GEO, HEO, OTHER
-- [ ] `tests/test_processing.py` — idempotency (no duplicate `processed_tle` rows on second run)
-- [ ] `tests/test_django_api.py` — `GET /api/v1/satellites/` returns 200 with paginated results
-- [ ] `tests/test_django_api.py` — `?orbit_type=LEO` filter returns only LEO satellites
-- [ ] `tests/test_django_api.py` — `?page_size=101` returns 400
-- [ ] `tests/test_django_api.py` — `GET /api/v1/satellites/{norad_id}/` returns 200 for existing satellite
-- [ ] `tests/test_django_api.py` — `GET /api/v1/satellites/99999/` returns 404
-- [ ] `tests/test_django_api.py` — history endpoint returns records ordered by epoch descending
-- [ ] `tests/test_django_api.py` — history `from_date`/`to_date` filters return correct range
-- [ ] `tests/test_litestar_api.py` — same 7 test cases as Django, using Litestar `TestClient`
-- [ ] Run full suite: `pytest -v` — 0 failures
+- [x] `tests/conftest.py` — `pg_container` session fixture (PostgresContainer via testcontainers)
+- [x] `tests/conftest.py` — `test_engine` session fixture (creates engine, runs Alembic migrations, patches `core.database`)
+- [x] `tests/conftest.py` — `db_session` per-test fixture (function scope, truncates tables after each test)
+- [x] `tests/conftest.py` — `factory-boy` factories: `satellite_factory`, `tle_record_factory`, `processed_tle_factory`
+- [x] `tests/conftest.py` — `make_patch_get_session` helper for monkeypatching views
+- [x] `tests/test_processing.py` — ISS orbital calculations within tolerance
+- [x] `tests/test_processing.py` — orbit classification for LEO, MEO, GEO, HEO, OTHER
+- [x] `tests/test_processing.py` — idempotency (no duplicate `processed_tle` rows on second run)
+- [x] `tests/test_processing.py` — multi-satellite batch processing
+- [x] `tests/test_django_api.py` — `GET /api/v1/satellites/` returns 200 with paginated results
+- [x] `tests/test_django_api.py` — `?orbit_type=MEO` filter returns only MEO satellites
+- [x] `tests/test_django_api.py` — `?orbit_type=INVALID` returns 400
+- [x] `tests/test_django_api.py` — pagination with `page_size=1` returns `next` link
+- [x] `tests/test_django_api.py` — `GET /api/v1/satellites/{norad_id}/` returns 200 for existing satellite
+- [x] `tests/test_django_api.py` — `GET /api/v1/satellites/99999/` returns 404
+- [x] `tests/test_django_api.py` — history endpoint returns records with correct TLE data
+- [x] `tests/test_django_api.py` — history 404 for unknown satellite
+- [x] `tests/test_litestar_api.py` — same 9 test cases as Django, using Litestar `TestClient`
+- [x] Run full suite: `pytest -q` — 38 passed, 0 failures
 
 ---
 

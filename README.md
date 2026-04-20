@@ -17,20 +17,16 @@ Clone this repo then run:
 ```bash
 cp .env.example .env
 uv sync
-python main.py start-db
-python main.py migrate
+uv run python main.py start-db
+uv run python main.py migrate
 ```
-
-<!-- SCREENSHOT: terminal output of `python main.py migrate` showing "Running upgrade -> 758ae71ff489, initial schema" -->
 
 ### 2 — Populate data
 
 ```bash
-python main.py backfill   # fetches live TLE data, simulates 7 days of history
-python main.py process    # computes orbital parameters for all new TLE records
+uv run python main.py backfill   # fetches live TLE data, simulates 7 days of history
+uv run python main.py process    # computes orbital parameters for all new TLE records
 ```
-
-<!-- SCREENSHOT: terminal output showing structured JSON log lines: {"event": "ingest complete", "fetched": 2, "inserted": 2, "skipped": 0, ...} -->
 
 Expected log output (structured JSON):
 ```json
@@ -43,8 +39,8 @@ Expected log output (structured JSON):
 In two separate terminals:
 
 ```bash
-python main.py run-django     # http://localhost:8000
-python main.py run-litestar   # http://localhost:8001
+uv run python main.py run-django     # http://localhost:8000
+uv run python main.py run-litestar   # http://localhost:8001
 ```
 
 Both servers read from the same PostgreSQL tables. The same request to either port returns the same JSON:
@@ -54,7 +50,6 @@ curl http://localhost:8000/api/v1/satellites/        # Django
 curl http://localhost:8001/api/v1/satellites/        # Litestar
 ```
 
-<!-- SCREENSHOT: side-by-side curl output from both ports showing identical JSON responses -->
 
 ---
 
@@ -131,8 +126,7 @@ curl "http://localhost:8000/api/v1/satellites/?orbit_type=LEO&page_size=5"
 }
 ```
 
-<!-- SCREENSHOT: Swagger UI at http://localhost:8000/api/schema/swagger-ui/ showing the three endpoints -->
-<!-- SCREENSHOT: Swagger UI at http://localhost:8001/schema/swagger showing the three endpoints with auto-generated response schemas -->
+
 
 ### Example: 404 response
 
@@ -259,20 +253,30 @@ class SatelliteListView(APIView):
 
 Every view method repeats this `with get_session()` block. Session lifecycle (commit/rollback) is managed in `core/database.py`.
 
-**Litestar** — The `SQLAlchemyPlugin` detects `db: Session` in the function signature and injects a managed session automatically. No `with` block required:
+**Litestar** — A `provide_db` generator is registered at app startup via `Provide`. Litestar resolves `db: Session` from the dependency graph and calls the generator — no `with` block required inside the handler:
 
 ```python
-from litestar.contrib.sqlalchemy.plugins import SQLAlchemyPlugin, SQLAlchemySyncConfig
+# litestar_api/app.py
+from collections.abc import Generator
+from litestar import Litestar
+from litestar.di import Provide
+from sqlalchemy.orm import Session
+from core.database import get_session
+
+def provide_db() -> Generator[Session, None, None]:
+    with get_session() as session:
+        yield session            # commit/rollback handled here
 
 app = Litestar(
     route_handlers=[SatelliteController],
-    plugins=[SQLAlchemyPlugin(config=SQLAlchemySyncConfig(connection_string=DATABASE_URL))],
+    dependencies={"db": Provide(provide_db)},
 )
 
+# litestar_api/satellites/controllers.py
 class SatelliteController(Controller):
-    @get("")
+    @get("", sync_to_thread=False)
     def list_satellites(self, db: Session, ...) -> SatelliteListResponse:
-        rows = db.execute(...).all()   # session is injected; commit handled by plugin
+        rows = db.execute(...).all()   # db injected automatically
         ...
 ```
 
@@ -337,13 +341,15 @@ class SatelliteListView(APIView):
 **Litestar** — Parameters are declared in the function signature with type annotations and default values. Litestar parses, coerces, and validates them automatically:
 
 ```python
-    @get("")
+from litestar.params import Parameter
+
+    @get("", sync_to_thread=False)
     def list_satellites(
         self,
         db: Session,
         orbit_type: Literal["LEO", "MEO", "GEO", "HEO", "OTHER"] | None = None,
-        page: Annotated[int, Gt(0)] = 1,
-        page_size: Annotated[int, Ge(1), Le(100)] = 20,
+        page: Annotated[int, Parameter(ge=1)] = 1,
+        page_size: Annotated[int, Parameter(ge=1, le=100)] = 20,
     ) -> SatelliteListResponse:
         ...
 ```
@@ -358,7 +364,7 @@ Invalid inputs return a structured `400` automatically. No manual parsing or bra
 |---|---|---|
 | Routing | Two URL files + `.as_view()` | Single `Controller` class with decorators |
 | Serialization | Separate `Serializer` classes, wired manually | Return type annotation = schema = OpenAPI |
-| DB session injection | Manual `with get_session()` in every handler | `SQLAlchemyPlugin` injects via type hint |
+| DB session injection | Manual `with get_session()` in every handler | `Provide(provide_db)` generator, injected via `db: Session` type hint |
 | 404 handling | `raise NotFound(detail=...)` | `raise NotFoundException(detail=...)` |
 | Query param validation | Manual parsing + branching | Annotated type hints, validated automatically |
 | OpenAPI / Swagger | Requires `drf-spectacular` (third-party) | Built in, zero config |
@@ -391,8 +397,6 @@ Neither Django nor Litestar owns the database models. Alembic manages all migrat
 ```bash
 uv run pytest -v
 ```
-
-<!-- SCREENSHOT: pytest -v output showing all tests passing -->
 
 ### Project structure
 

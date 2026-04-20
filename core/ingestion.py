@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -53,9 +53,15 @@ def _parse_epoch(epoch_str: str) -> datetime:
 def ingest_satellites(
     session: Session,
     fetched_at: datetime | None = None,
+    epoch_offset: timedelta | None = None,
     base_url: str = "https://tle.ivanstanojevic.me",
 ) -> dict:
     """Fetch TLE data for both target satellites and persist to the database.
+
+    ``epoch_offset``: when provided, subtract this delta from the TLE epoch before
+    storing.  Used by the ``backfill`` command to produce distinct (satellite_id,
+    epoch) pairs from an API that only returns the current TLE — the API has no
+    history endpoint, so backfill history is synthetic.
 
     Returns a summary dict: {"fetched": n, "inserted": n, "skipped": n}.
     """
@@ -89,8 +95,13 @@ def ingest_satellites(
             result = session.execute(stmt)
             satellite_id: int = result.scalar_one()
 
-            # Parse epoch
+            # Parse epoch; shift it for synthetic backfill days so that each
+            # backfill iteration produces a unique (satellite_id, epoch) pair.
+            # The API only returns the current TLE, so without this shift all
+            # backfill days would collide on the same epoch and be skipped.
             epoch = _parse_epoch(data["date"])
+            if epoch_offset:
+                epoch = epoch - epoch_offset
 
             # Insert TLE record, skip on duplicate (satellite_id, epoch)
             tle_stmt = (
