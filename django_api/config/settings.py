@@ -20,6 +20,15 @@ USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "/static/"
 
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [],
+        "APP_DIRS": True,  # required for drf-spectacular to find its Swagger UI template
+        "OPTIONS": {"context_processors": []},
+    }
+]
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",

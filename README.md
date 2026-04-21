@@ -1,6 +1,6 @@
-# Django vs Litestar API Comparison
+# Which API? A Django vs Litestar Comparison
 
-The project creates a satellite TLE pipeline implemented twice — once with **Django REST Framework**, once with **Litestar** — sharing a single SQLAlchemy data layer. It fetches live Two-Line Element (TLE) orbital data for the ISS and NOAA 19, processes it with `sgp4` to compute apogee, perigee, period, and orbit type, then serves the results through identical REST API endpoints in both frameworks. The goal is a concrete, side-by-side comparison of how each framework handles routing, serialization, dependency injection, and error handling.
+The project creates a satellite TLE pipeline implemented twice — once with **Django**, once with **Litestar** — sharing a single SQLAlchemy data layer. It fetches live Two-Line Element (TLE) orbital data for the ISS and NOAA 19, processes it with `sgp4` to compute apogee, perigee, period, and orbit type, then serves the results through identical REST API endpoints in both frameworks. The goal is a concrete, side-by-side comparison of how each framework handles routing, serialization, dependency injection, and error handling.
 
 ---
 

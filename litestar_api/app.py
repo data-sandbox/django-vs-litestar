@@ -1,8 +1,10 @@
 from collections.abc import Generator
 
-from litestar import Litestar
+from litestar import Litestar, get
 from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
+from litestar.openapi.plugins import SwaggerRenderPlugin
+from litestar.response import Redirect
 from sqlalchemy.orm import Session
 
 from core.database import get_session
@@ -15,9 +17,14 @@ def provide_db() -> Generator[Session, None, None]:
         yield session
 
 
+@get("/", include_in_schema=False, sync_to_thread=False)
+def root_redirect() -> Redirect:
+    return Redirect(path="/docs")
+
+
 def create_app() -> Litestar:
     return Litestar(
-        route_handlers=[SatelliteController],
+        route_handlers=[SatelliteController, root_redirect],
         dependencies={"db": Provide(provide_db)},
         openapi_config=OpenAPIConfig(
             title="Satellite TLE API (Litestar)",
@@ -26,6 +33,8 @@ def create_app() -> Litestar:
                 "Litestar implementation — compare with the Django version at :8000."
             ),
             version="1.0.0",
+            path="/docs",
+            render_plugins=[SwaggerRenderPlugin()],
         ),
     )
 
