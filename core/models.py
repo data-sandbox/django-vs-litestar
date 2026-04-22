@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import (
     DateTime,
@@ -12,14 +12,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 def _now_utc() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
-    pass
+    """SQLAlchemy declarative base for all ORM models."""
 
 
 class Satellite(Base):
+    """Persisted satellite record identified by its NORAD catalog ID."""
+
     __tablename__ = "satellites"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -38,8 +40,12 @@ class Satellite(Base):
 
 
 class TleRecord(Base):
+    """Raw TLE data snapshot fetched from the upstream API."""
+
     __tablename__ = "tle_records"
-    __table_args__ = (UniqueConstraint("satellite_id", "epoch", name="uq_tle_records_satellite_epoch"),)
+    __table_args__ = (
+        UniqueConstraint("satellite_id", "epoch", name="uq_tle_records_satellite_epoch"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     satellite_id: Mapped[int] = mapped_column(
@@ -57,6 +63,8 @@ class TleRecord(Base):
 
 
 class ProcessedTle(Base):
+    """Derived orbital parameters computed from a TleRecord via sgp4."""
+
     __tablename__ = "processed_tle"
     __table_args__ = (UniqueConstraint("tle_record_id", name="uq_processed_tle_tle_record_id"),)
 

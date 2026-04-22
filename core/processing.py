@@ -64,11 +64,7 @@ def process_unprocessed(session: Session) -> dict:
 
     Returns {"processed": n, "errors": n}.
     """
-    stmt = (
-        select(TleRecord)
-        .outerjoin(TleRecord.processed)
-        .where(ProcessedTle.id.is_(None))
-    )
+    stmt = select(TleRecord).outerjoin(TleRecord.processed).where(ProcessedTle.id.is_(None))
     records = session.execute(stmt).scalars().all()
 
     processed = 0

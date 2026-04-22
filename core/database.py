@@ -16,6 +16,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
+    """Yield a transactional SQLAlchemy session, committing on exit and rolling back on error."""
     session: Session = SessionLocal()
     try:
         yield session

@@ -3,6 +3,7 @@ import os
 
 
 def setup_logging(level: str | None = None) -> None:
+    """Configure structured JSON logging for the application."""
     from pythonjsonlogger.json import JsonFormatter
 
     log_level = level or os.getenv("LOG_LEVEL", "INFO")

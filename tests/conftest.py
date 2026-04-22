@@ -14,7 +14,7 @@ Start-up order
 import os
 from collections.abc import Generator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 # ---------------------------------------------------------------------------
 # Set DATABASE_URL *before* any core.* import so create_engine() doesn't
@@ -28,12 +28,12 @@ os.environ.setdefault(
 import factory  # noqa: E402
 import factory.alchemy  # noqa: E402
 import pytest  # noqa: E402
-from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 from sqlalchemy import create_engine, text  # noqa: E402
 from sqlalchemy.orm import Session, sessionmaker  # noqa: E402
 from testcontainers.postgres import PostgresContainer  # noqa: E402
 
+from alembic import command  # noqa: E402
 from core.models import ProcessedTle, Satellite, TleRecord  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -107,8 +107,7 @@ def db_session(test_engine) -> Generator[Session, None, None]:
         with Session(test_engine) as cleanup:
             cleanup.execute(
                 text(
-                    "TRUNCATE TABLE processed_tle, tle_records, satellites "
-                    "RESTART IDENTITY CASCADE"
+                    "TRUNCATE TABLE processed_tle, tle_records, satellites RESTART IDENTITY CASCADE"
                 )
             )
             cleanup.commit()
@@ -145,10 +144,8 @@ def tle_record_factory(db_session, satellite_factory):
         satellite_id = factory.SelfAttribute("satellite.id")
         tle_line1 = ISS_LINE1
         tle_line2 = ISS_LINE2
-        epoch = factory.LazyFunction(
-            lambda: datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        )
-        fetched_at = factory.LazyFunction(lambda: datetime.now(timezone.utc))
+        epoch = factory.LazyFunction(lambda: datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC))
+        fetched_at = factory.LazyFunction(lambda: datetime.now(UTC))
 
     return _TleRecordFactory
 

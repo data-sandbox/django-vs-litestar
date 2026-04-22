@@ -1,6 +1,5 @@
 """Tests for core/ingestion.py – fetch and persist TLE data."""
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -8,7 +7,7 @@ import respx
 from httpx import Response
 from sqlalchemy import select
 
-from core.ingestion import SATELLITE_TARGETS, fetch_tle, ingest_satellites
+from core.ingestion import fetch_tle, ingest_satellites
 from core.models import Satellite, TleRecord
 from tests.conftest import ISS_LINE1, ISS_LINE2, NOAA_LINE1, NOAA_LINE2
 
@@ -68,10 +67,14 @@ def test_fetch_tle_retries_then_raises():
 def test_ingest_happy_path(db_session):
     """Both satellites fetched and inserted on first run."""
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_ISS}").mock(
-        return_value=Response(200, json=_tle_payload("ISS (ZARYA)", _NORAD_ISS, ISS_LINE1, ISS_LINE2))
+        return_value=Response(
+            200, json=_tle_payload("ISS (ZARYA)", _NORAD_ISS, ISS_LINE1, ISS_LINE2)
+        )
     )
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_NOAA}").mock(
-        return_value=Response(200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2))
+        return_value=Response(
+            200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2)
+        )
     )
 
     summary = ingest_satellites(db_session, base_url=_BASE_URL)
@@ -89,10 +92,14 @@ def test_ingest_deduplication(db_session):
     """Re-ingesting the same epoch inserts 0 new records."""
     for _ in range(2):
         respx.get(f"{_BASE_URL}/api/tle/{_NORAD_ISS}").mock(
-            return_value=Response(200, json=_tle_payload("ISS (ZARYA)", _NORAD_ISS, ISS_LINE1, ISS_LINE2))
+            return_value=Response(
+                200, json=_tle_payload("ISS (ZARYA)", _NORAD_ISS, ISS_LINE1, ISS_LINE2)
+            )
         )
         respx.get(f"{_BASE_URL}/api/tle/{_NORAD_NOAA}").mock(
-            return_value=Response(200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2))
+            return_value=Response(
+                200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2)
+            )
         )
 
     # First run
@@ -115,7 +122,9 @@ def test_ingest_partial_failure(db_session):
     """When one satellite fails all retries, the other is still inserted."""
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_ISS}").mock(return_value=Response(503))
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_NOAA}").mock(
-        return_value=Response(200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2))
+        return_value=Response(
+            200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2)
+        )
     )
 
     with patch("time.sleep"):
@@ -132,16 +141,18 @@ def test_ingest_partial_failure(db_session):
 def test_ingest_satellite_name_updated(db_session):
     """An existing satellite whose name changed in the API gets updated in the DB."""
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_ISS}").mock(
-        return_value=Response(200, json=_tle_payload("ISS RENAMED", _NORAD_ISS, ISS_LINE1, ISS_LINE2))
+        return_value=Response(
+            200, json=_tle_payload("ISS RENAMED", _NORAD_ISS, ISS_LINE1, ISS_LINE2)
+        )
     )
     respx.get(f"{_BASE_URL}/api/tle/{_NORAD_NOAA}").mock(
-        return_value=Response(200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2))
+        return_value=Response(
+            200, json=_tle_payload("NOAA 19", _NORAD_NOAA, NOAA_LINE1, NOAA_LINE2)
+        )
     )
 
     ingest_satellites(db_session, base_url=_BASE_URL)
     db_session.commit()
 
-    iss = db_session.execute(
-        select(Satellite).where(Satellite.norad_id == _NORAD_ISS)
-    ).scalar_one()
+    iss = db_session.execute(select(Satellite).where(Satellite.norad_id == _NORAD_ISS)).scalar_one()
     assert iss.name == "ISS RENAMED"

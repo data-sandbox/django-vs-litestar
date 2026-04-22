@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,7 +18,9 @@ SATELLITE_TARGETS: list[tuple[str, int]] = [
 _RETRY_DELAYS = (1, 2, 4)
 
 
-def fetch_tle(norad_id: int, client: httpx.Client, base_url: str = "https://tle.ivanstanojevic.me") -> dict:
+def fetch_tle(
+    norad_id: int, client: httpx.Client, base_url: str = "https://tle.ivanstanojevic.me"
+) -> dict:
     """Fetch a single TLE record by NORAD ID with up to 3 retries and exponential backoff."""
     url = f"{base_url}/api/tle/{norad_id}"
     last_exc: Exception | None = None
@@ -34,20 +36,24 @@ def fetch_tle(norad_id: int, client: httpx.Client, base_url: str = "https://tle.
             )
             last_exc = exc
         except httpx.RequestError as exc:
-            logger.warning("TLE API request error", extra={"url": url, "attempt": attempt, "error": str(exc)})
+            logger.warning(
+                "TLE API request error", extra={"url": url, "attempt": attempt, "error": str(exc)}
+            )
             last_exc = exc
 
         if delay is not None:
             time.sleep(delay)
 
-    raise RuntimeError(f"Failed to fetch NORAD {norad_id} after {len(_RETRY_DELAYS) + 1} attempts") from last_exc
+    raise RuntimeError(
+        f"Failed to fetch NORAD {norad_id} after {len(_RETRY_DELAYS) + 1} attempts"
+    ) from last_exc
 
 
 def _parse_epoch(epoch_str: str) -> datetime:
     """Parse the ISO-8601 epoch string returned by the TLE API into a UTC datetime."""
     # The API returns strings like "2026-04-18T12:00:00+00:00" or "2026-04-18T12:00:00Z"
     dt = datetime.fromisoformat(epoch_str.replace("Z", "+00:00"))
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 def ingest_satellites(
@@ -66,7 +72,7 @@ def ingest_satellites(
     Returns a summary dict: {"fetched": n, "inserted": n, "skipped": n}.
     """
     if fetched_at is None:
-        fetched_at = datetime.now(timezone.utc)
+        fetched_at = datetime.now(UTC)
 
     total_fetched = 0
     total_inserted = 0
@@ -77,7 +83,10 @@ def ingest_satellites(
             try:
                 data = fetch_tle(norad_id, client, base_url=base_url)
             except RuntimeError:
-                logger.error("Skipping satellite after failed fetch", extra={"norad_id": norad_id, "satellite_name": name})
+                logger.error(
+                    "Skipping satellite after failed fetch",
+                    extra={"norad_id": norad_id, "satellite_name": name},
+                )
                 continue
 
             total_fetched += 1
@@ -88,7 +97,7 @@ def ingest_satellites(
                 .values(norad_id=norad_id, name=data.get("name", name))
                 .on_conflict_do_update(
                     index_elements=["norad_id"],
-                    set_={"name": data.get("name", name), "updated_at": datetime.now(timezone.utc)},
+                    set_={"name": data.get("name", name), "updated_at": datetime.now(UTC)},
                 )
                 .returning(Satellite.id)
             )

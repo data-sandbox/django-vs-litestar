@@ -4,7 +4,6 @@ All tests monkeypatch ``django_api.satellites.views.get_session`` so the views
 use the test database session rather than the live development database.
 """
 
-import django
 import pytest
 from rest_framework.test import APIClient
 
@@ -57,7 +56,12 @@ def test_list_satellites_returns_processed_records(
 
 
 def test_list_satellites_filter_orbit_type(
-    api_client, db_session, processed_tle_factory, satellite_factory, tle_record_factory, patch_get_session
+    api_client,
+    db_session,
+    processed_tle_factory,
+    satellite_factory,
+    tle_record_factory,
+    patch_get_session,
 ):
     """orbit_type filter returns only matching satellites."""
     # LEO satellite (already created by processed_tle_factory default)
@@ -89,7 +93,12 @@ def test_list_satellites_invalid_orbit_type(api_client, patch_get_session):
 
 
 def test_list_satellites_pagination(
-    api_client, db_session, satellite_factory, tle_record_factory, processed_tle_factory, patch_get_session
+    api_client,
+    db_session,
+    satellite_factory,
+    tle_record_factory,
+    processed_tle_factory,
+    patch_get_session,
 ):
     """page_size=1 with two satellites returns next link and one result."""
     processed_tle_factory()
@@ -111,9 +120,7 @@ def test_list_satellites_pagination(
 # ---------------------------------------------------------------------------
 
 
-def test_satellite_detail_found(
-    api_client, db_session, processed_tle_factory, patch_get_session
-):
+def test_satellite_detail_found(api_client, db_session, processed_tle_factory, patch_get_session):
     """Existing satellite → 200 with full orbital fields."""
     ptl = processed_tle_factory()
     db_session.commit()
@@ -138,9 +145,7 @@ def test_satellite_detail_not_found(api_client, patch_get_session):
 # ---------------------------------------------------------------------------
 
 
-def test_satellite_history_found(
-    api_client, db_session, tle_record_factory, patch_get_session
-):
+def test_satellite_history_found(api_client, db_session, tle_record_factory, patch_get_session):
     """Satellite with TLE records → history returns them."""
     tle = tle_record_factory()
     db_session.commit()

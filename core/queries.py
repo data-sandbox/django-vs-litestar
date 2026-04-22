@@ -1,6 +1,6 @@
 """Shared SQLAlchemy query helpers used by both the Django and Litestar API layers."""
 
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import UTC, date, datetime, time, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -44,8 +44,7 @@ def get_satellite_list(
         .join(max_ep, max_ep.c.satellite_id == Satellite.id)
         .join(
             TleRecord,
-            (TleRecord.satellite_id == Satellite.id)
-            & (TleRecord.epoch == max_ep.c.max_epoch),
+            (TleRecord.satellite_id == Satellite.id) & (TleRecord.epoch == max_ep.c.max_epoch),
         )
         .join(ProcessedTle, ProcessedTle.tle_record_id == TleRecord.id)
         .order_by(Satellite.norad_id)
@@ -79,8 +78,7 @@ def get_satellite_detail(session: Session, norad_id: int):
         .join(max_ep, max_ep.c.satellite_id == Satellite.id)
         .join(
             TleRecord,
-            (TleRecord.satellite_id == Satellite.id)
-            & (TleRecord.epoch == max_ep.c.max_epoch),
+            (TleRecord.satellite_id == Satellite.id) & (TleRecord.epoch == max_ep.c.max_epoch),
         )
         .join(ProcessedTle, ProcessedTle.tle_record_id == TleRecord.id)
         .where(Satellite.norad_id == norad_id)
@@ -117,13 +115,13 @@ def get_satellite_history(
 
     if from_date:
         base = base.where(
-            TleRecord.epoch >= datetime.combine(from_date, time.min).replace(tzinfo=timezone.utc)
+            TleRecord.epoch >= datetime.combine(from_date, time.min).replace(tzinfo=UTC)
         )
     if to_date:
         # Inclusive: up to end of to_date
         base = base.where(
             TleRecord.epoch
-            < datetime.combine(to_date + timedelta(days=1), time.min).replace(tzinfo=timezone.utc)
+            < datetime.combine(to_date + timedelta(days=1), time.min).replace(tzinfo=UTC)
         )
 
     count = session.execute(select(func.count()).select_from(base.subquery())).scalar_one()

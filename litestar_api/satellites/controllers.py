@@ -2,7 +2,7 @@ from datetime import date
 from typing import Annotated, Literal
 
 from litestar import Controller, get
-from litestar.exceptions import NotFoundException, ValidationException
+from litestar.exceptions import NotFoundException
 from litestar.params import Parameter
 from sqlalchemy.orm import Session
 
@@ -24,6 +24,8 @@ _ORBIT_TYPES = Literal["LEO", "MEO", "GEO", "HEO", "OTHER"]
 
 
 class SatelliteController(Controller):
+    """Litestar controller for satellite TLE read-only endpoints."""
+
     path = "/api/v1/satellites"
 
     @get("", sync_to_thread=False)
@@ -34,9 +36,13 @@ class SatelliteController(Controller):
         page: Annotated[int, Parameter(ge=1)] = 1,
         page_size: Annotated[int, Parameter(ge=1, le=100)] = 20,
     ) -> SatelliteListResponse:
+        """Return a paginated satellite list, optionally filtered by orbit type."""
         count, rows = get_satellite_list(db, orbit_type=orbit_type, page=page, page_size=page_size)
         next_url, prev_url = build_pagination_urls(
-            "/api/v1/satellites/", page, page_size, count,
+            "/api/v1/satellites/",
+            page,
+            page_size,
+            count,
             extra_params={"orbit_type": orbit_type},
         )
         return SatelliteListResponse(
@@ -48,6 +54,7 @@ class SatelliteController(Controller):
 
     @get("/{norad_id:int}", sync_to_thread=False)
     def get_satellite(self, db: Session, norad_id: int) -> SatelliteDetail:
+        """Return full orbital detail for the satellite identified by norad_id."""
         row = get_satellite_detail(db, norad_id)
         if row is None:
             raise NotFoundException(detail=f"Satellite with NORAD ID {norad_id} not found.")
@@ -63,15 +70,23 @@ class SatelliteController(Controller):
         from_date: date | None = None,
         to_date: date | None = None,
     ) -> TleHistoryResponse:
+        """Return paginated TLE history for a satellite, filterable by date range."""
         exists, count, rows = get_satellite_history(
-            db, norad_id, from_date=from_date, to_date=to_date,
-            page=page, page_size=page_size,
+            db,
+            norad_id,
+            from_date=from_date,
+            to_date=to_date,
+            page=page,
+            page_size=page_size,
         )
         if not exists:
             raise NotFoundException(detail=f"Satellite with NORAD ID {norad_id} not found.")
 
         next_url, prev_url = build_pagination_urls(
-            f"/api/v1/satellites/{norad_id}/history", page, page_size, count,
+            f"/api/v1/satellites/{norad_id}/history",
+            page,
+            page_size,
+            count,
             extra_params={"from_date": from_date, "to_date": to_date},
         )
         return TleHistoryResponse(

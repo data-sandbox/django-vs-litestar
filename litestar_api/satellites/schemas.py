@@ -4,6 +4,8 @@ from pydantic import BaseModel, ConfigDict
 
 
 class SatelliteListItem(BaseModel):
+    """Satellite summary row returned in list responses."""
+
     model_config = ConfigDict(from_attributes=True)
 
     norad_id: int
@@ -17,6 +19,8 @@ class SatelliteListItem(BaseModel):
 
 
 class SatelliteListResponse(BaseModel):
+    """Paginated envelope wrapping a list of SatelliteListItem records."""
+
     count: int
     next: str | None
     previous: str | None
@@ -24,6 +28,8 @@ class SatelliteListResponse(BaseModel):
 
 
 class SatelliteDetail(BaseModel):
+    """Full orbital detail for a single satellite including eccentricity and mean motion."""
+
     model_config = ConfigDict(from_attributes=True)
 
     norad_id: int
@@ -39,6 +45,8 @@ class SatelliteDetail(BaseModel):
 
 
 class TleHistoryItem(BaseModel):
+    """Single raw TLE snapshot returned in the history endpoint."""
+
     model_config = ConfigDict(from_attributes=True)
 
     tle_line1: str
@@ -48,6 +56,8 @@ class TleHistoryItem(BaseModel):
 
 
 class TleHistoryResponse(BaseModel):
+    """Paginated envelope wrapping a list of TleHistoryItem records."""
+
     count: int
     next: str | None
     previous: str | None

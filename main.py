@@ -1,7 +1,6 @@
 import os
 import subprocess
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import click
 from dotenv import load_dotenv
@@ -38,8 +37,9 @@ def migrate() -> None:
     from core.logging_config import setup_logging
 
     setup_logging()
-    from alembic import command as alembic_command
     from alembic.config import Config
+
+    from alembic import command as alembic_command
 
     alembic_cfg = Config("alembic.ini")
     alembic_command.upgrade(alembic_cfg, "head")
@@ -76,7 +76,7 @@ def backfill() -> None:
     days = int(os.environ.get("BACKFILL_DAYS", "7"))
 
     for day in range(days):
-        fetched_at = datetime.now(timezone.utc) - timedelta(days=day)
+        fetched_at = datetime.now(UTC) - timedelta(days=day)
         with get_session() as session:
             result = ingest_satellites(
                 session,
@@ -128,4 +128,3 @@ def run_litestar() -> None:
 
 if __name__ == "__main__":
     cli()
-

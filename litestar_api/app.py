@@ -19,10 +19,12 @@ def provide_db() -> Generator[Session, None, None]:
 
 @get("/", include_in_schema=False, sync_to_thread=False)
 def root_redirect() -> Redirect:
+    """Redirect the root path to the Swagger UI docs."""
     return Redirect(path="/docs")
 
 
 def create_app() -> Litestar:
+    """Instantiate and return the configured Litestar application."""
     return Litestar(
         route_handlers=[SatelliteController, root_redirect],
         dependencies={"db": Provide(provide_db)},
