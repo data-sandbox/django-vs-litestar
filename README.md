@@ -54,7 +54,7 @@ curl http://localhost:8002/api/v1/satellites/        # FastAPI
 curl http://localhost:8003/api/v1/satellites/        # Flask
 ```
 
-Interactive OpenAPI docs are at `/docs` on every server.
+Interactive OpenAPI docs are at `/docs` on every server (Flask: `/openapi/swagger`).
 
 
 ---
@@ -81,7 +81,7 @@ PostgreSQL: processed_tle  — apogee, perigee, period, orbit_type
     ├──▶  django_api/   (port 8000)   DRF APIView + plain Serializer
     ├──▶  litestar_api/ (port 8001)   Litestar Controller + Pydantic schemas
     ├──▶  fastapi_api/  (port 8002)   FastAPI APIRouter + Pydantic schemas
-    └──▶  flask_api/    (port 8003)   flask-smorest Blueprint + marshmallow schemas
+    └──▶  flask_api/    (port 8003)   flask-openapi3 APIBlueprint + Pydantic schemas
 ```
 
 All four framework layers are read-only. All writes happen through `core/`.
@@ -205,25 +205,22 @@ def get_satellite(norad_id: int, ...) -> SatelliteDetail: ...
 app.include_router(router)
 ```
 
-**Flask (flask-smorest)** — A `Blueprint` with `url_prefix`. `MethodView` classes bind HTTP verbs to methods:
+**Flask (flask-openapi3)** — An `APIBlueprint` with `url_prefix`. Plain functions with typed Pydantic path and query models; the blueprint is mounted via `register_api`:
 
 ```python
-blp = Blueprint("satellites", __name__, url_prefix="/api/v1/satellites")
+blp = APIBlueprint("satellites", __name__, url_prefix="/api/v1/satellites")
 
-@blp.route("/")
-class SatelliteList(MethodView):
-    def get(self, query_args): ...
+@blp.get("/", responses={200: SatelliteListResponse})
+def list_satellites(query: SatelliteListQuery): ...
 
-@blp.route("/<int:norad_id>/history")
-class SatelliteHistory(MethodView):
-    def get(self, query_args, norad_id): ...
+@blp.get("/<int:norad_id>/history", responses={200: TleHistoryResponse})
+def get_history(path: _TleHistoryPath, query: TleHistoryQuery): ...
 
-@blp.route("/<int:norad_id>")
-class SatelliteDetail(MethodView):
-    def get(self, norad_id): ...
+@blp.get("/<int:norad_id>", responses={200: SatelliteDetail})
+def get_satellite(path: _SatelliteDetailPath): ...
 
 # flask_api/app.py
-api.register_blueprint(blp)
+app.register_api(blp)
 ```
 
 ---
@@ -295,30 +292,29 @@ def list_satellites(...):
 
 `ConfigDict(from_attributes=True)` allows both Litestar and FastAPI to serialize SQLAlchemy Row objects directly.
 
-**Flask (flask-smorest)** — Uses marshmallow `Schema` classes wired to routes via `@blp.arguments` (deserialize request) and `@blp.response` (serialize response):
+**Flask (flask-openapi3)** — Uses Pydantic `BaseModel` classes, the same pattern as FastAPI and Litestar. The response schema is passed directly to the `responses` argument on the route decorator:
 
 ```python
-# flask_api/satellites/schemas.py
-class SatelliteListItemSchema(ma.Schema):
-    norad_id        = ma.fields.Int(dump_default=None)
-    name            = ma.fields.Str(dump_default=None)
-    orbit_type      = ma.fields.Str(dump_default=None)
-    period_minutes  = ma.fields.Float(dump_default=None)
-    apogee_km       = ma.fields.Float(dump_default=None)
-    perigee_km      = ma.fields.Float(dump_default=None)
-    inclination_deg = ma.fields.Float(dump_default=None)
-    last_updated    = ma.fields.DateTime(dump_default=None)
+# flask_api/satellites/schemas.py — identical structure to fastapi_api/ and litestar_api/
+class SatelliteListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    norad_id: int
+    ...
+
+class SatelliteListResponse(BaseModel):
+    count:    int
+    next:     str | None
+    previous: str | None
+    results:  list[SatelliteListItem]
 
 # flask_api/satellites/views.py
-@blp.route("/")
-class SatelliteList(MethodView):
-    @blp.arguments(SatelliteListQuerySchema, location="query")
-    @blp.response(200, SatelliteListResponseSchema)
-    def get(self, query_args):
-        ...
+@blp.get("/", responses={200: SatelliteListResponse})
+def list_satellites(query: SatelliteListQuery) -> dict:
+    ...
+    return SatelliteListResponse(...).model_dump(mode="json")
 ```
 
-The `@blp.response` decorator runs marshmallow serialization and registers the schema in the OpenAPI spec automatically.
+flask-openapi3 reads the Pydantic model from `responses` to generate the OpenAPI spec. Unlike FastAPI and Litestar, serialization is explicit — the handler calls `.model_dump()` itself rather than relying on the framework to serialize the return value.
 
 ---
 
@@ -372,14 +368,11 @@ def list_satellites(
 **Flask** — No DI system. Like Django, sessions are acquired manually. The module-level `get_session` reference is patchable for testing:
 
 ```python
-@blp.route("/")
-class SatelliteList(MethodView):
-    @blp.arguments(SatelliteListQuerySchema, location="query")
-    @blp.response(200, SatelliteListResponseSchema)
-    def get(self, query_args):
-        with get_session() as session:   # repeated in every handler
-            rows = session.execute(...).all()
-        return {"count": count, "results": list(rows), ...}
+@blp.get("/", responses={200: SatelliteListResponse})
+def list_satellites(query: SatelliteListQuery) -> dict:
+    with get_session() as session:   # repeated in every handler
+        count, rows = get_satellite_list(session, ...)
+    return SatelliteListResponse(...).model_dump(mode="json")
 ```
 
 ---
@@ -411,7 +404,7 @@ raise HTTPException(status_code=404, detail=f"Satellite with NORAD ID {norad_id}
 
 ```python
 from flask import abort
-abort(404, message=f"Satellite with NORAD ID {norad_id} not found.")
+abort(404)
 ```
 
 All four return `{"detail": "..."}` with a `404` status — the same wire format despite different APIs.
@@ -469,38 +462,33 @@ def list_satellites(
     ...
 ```
 
-**Flask (flask-smorest)** — A marshmallow `Schema` is used as the query-argument schema. flask-smorest validates it before calling the handler and returns `422` on error:
+**Flask (flask-openapi3)** — A Pydantic `BaseModel` is declared for query parameters. flask-openapi3 validates it before calling the handler and returns `422` on error:
 
 ```python
-class SatelliteListQuerySchema(ma.Schema):
-    orbit_type = ma.fields.Str(load_default=None, allow_none=True)
-    page       = ma.fields.Int(load_default=1, validate=ma.validate.Range(min=1))
-    page_size  = ma.fields.Int(load_default=20, validate=ma.validate.Range(min=1, max=100))
+_OrbitType = Literal["LEO", "MEO", "GEO", "HEO", "OTHER"]
 
-    @ma.validates("orbit_type")
-    def validate_orbit_type(self, value: str | None, **kwargs: object) -> None:
-        if value is not None and value not in {"LEO", "MEO", "GEO", "HEO", "OTHER"}:
-            raise ma.ValidationError("Must be one of: LEO, MEO, GEO, HEO, OTHER.")
+class SatelliteListQuery(BaseModel):
+    orbit_type: _OrbitType | None = None
+    page:       int = Field(1, ge=1)
+    page_size:  int = Field(20, ge=1, le=100)
 
-@blp.route("/")
-class SatelliteList(MethodView):
-    @blp.arguments(SatelliteListQuerySchema, location="query")
-    def get(self, query_args):   # validated dict injected automatically
-        ...
+@blp.get("/", responses={200: SatelliteListResponse})
+def list_satellites(query: SatelliteListQuery) -> dict:   # validated model injected automatically
+    ...
 ```
 
 ---
 
 ## Summary
 
-| Concern | Django (DRF) | Litestar | FastAPI | Flask (flask-smorest) |
+| Concern | Django (DRF) | Litestar | FastAPI | Flask (flask-openapi3) |
 |---|---|---|---|---|
-| Routing | Two URL files + `.as_view()` | `Controller` class with decorators | `APIRouter` + `include_router()` | `Blueprint` + `MethodView` |
-| Serialization | `Serializer` classes, wired manually | Return type = schema (Pydantic) | `response_model` on decorator (Pydantic) | `@blp.response` + marshmallow `Schema` |
+| Routing | Two URL files + `.as_view()` | `Controller` class with decorators | `APIRouter` + `include_router()` | `APIBlueprint` + plain functions |
+| Serialization | `Serializer` classes, wired manually | Return type = schema (Pydantic) | `response_model` on decorator (Pydantic) | Pydantic `BaseModel` + explicit `.model_dump()` |
 | DB session injection | Manual `with get_session()` per handler | `Provide(provide_db)` generator, injected via type hint | `Depends(get_db)` generator | Manual `with get_session()` per handler |
 | 404 handling | `raise NotFound(detail=...)` | `raise NotFoundException(detail=...)` | `raise HTTPException(status_code=404)` | `abort(404, message=...)` |
-| Query param validation | Manual parsing + branching | Annotated type hints, `400` on error | Annotated type hints, `422` on error | marshmallow `Schema` + `@blp.arguments`, `422` on error |
-| OpenAPI / Swagger | Requires `drf-spectacular` (third-party) | Built in, zero config | Built in, zero config | flask-smorest (extension, minimal config) |
+| Query param validation | Manual parsing + branching | Annotated type hints, `400` on error | Annotated type hints, `422` on error | Pydantic `BaseModel` query model, `422` on error |
+| OpenAPI / Swagger | Requires `drf-spectacular` (third-party) | Built in, zero config | Built in, zero config | flask-openapi3 (extension, minimal config) |
 | Boilerplate per endpoint | High | Low | Low | Medium |
 | Validation error status | `400` | `400` | `422` | `422` |
 
@@ -540,7 +528,7 @@ core/               Shared pipeline logic (no framework dependency)
 django_api/         DRF implementation (port 8000)
 litestar_api/       Litestar implementation (port 8001)
 fastapi_api/        FastAPI implementation (port 8002)
-flask_api/          Flask (flask-smorest) implementation (port 8003)
+flask_api/          Flask (flask-openapi3) implementation (port 8003)
 tests/              Shared test suite covering all four frameworks
 alembic/            Database migrations
 specs/              Requirements, architecture, and implementation plan
