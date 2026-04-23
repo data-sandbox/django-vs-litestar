@@ -2,7 +2,7 @@
 
 ## Overview
 
-Build a satellite TLE (Two-Line Element) data pipeline with a REST API comparison across four Python web frameworks: Django (DRF), Litestar, FastAPI, and Flask (flask-smorest).
+Build a satellite TLE (Two-Line Element) data pipeline with a REST API comparison across four Python web frameworks: Django (DRF), Litestar, FastAPI, and Flask (flask-openapi3).
 
 The system:
 1. Fetches satellite TLE data from `https://tle.ivanstanojevic.me/`
@@ -17,7 +17,7 @@ The system:
 | Django (DRF) | 8000 | `Serializer` classes | `drf-spectacular` (3rd party) |
 | Litestar | 8001 | Pydantic + return-type annotation | Built-in |
 | FastAPI | 8002 | Pydantic + `response_model` | Built-in |
-| Flask (flask-smorest) | 8003 | marshmallow `Schema` + `@blp.response` | flask-smorest (extension) |
+| Flask (flask-openapi3) | 8003 | Pydantic `BaseModel` + `@blp.get` | flask-openapi3 (built-in) | sync (WSGI) |
 
 ---
 
@@ -305,6 +305,8 @@ Update `pyproject.toml` with the following:
 | `django`             | Web framework (routing, middleware, DRF)         |
 | `djangorestframework`| DRF serializers and API views                    |
 | `litestar`           | Web framework with native SQLAlchemy integration |
+| `flask`              | WSGI web framework                                                          |
+| `flask-openapi3`     | Pydantic-native OpenAPI spec + Swagger UI for Flask                         |
 
 **Development:**
 

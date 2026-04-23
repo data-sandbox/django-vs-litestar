@@ -1,10 +1,10 @@
-"""Tests for the Flask + flask-smorest API.
+"""Tests for the Flask + flask-openapi3 API.
 
 All tests monkeypatch ``flask_api.satellites.views.get_session`` so the views
 use the test database session rather than the live development database.
 
-Flask-smorest returns HTTP 422 (Unprocessable Entity) for validation errors,
-which is standard for marshmallow-backed APIs.
+Flask-openapi3 returns HTTP 422 (Unprocessable Entity) for Pydantic validation
+errors, matching the behaviour of FastAPI and Litestar.
 """
 
 import pytest
@@ -80,7 +80,7 @@ def test_list_satellites_filter_orbit_type(
 
 
 def test_list_satellites_invalid_orbit_type(flask_client):
-    """Invalid orbit_type value → 422 (marshmallow validation error)."""
+    """Invalid orbit_type value → 422 (Pydantic validation error)."""
     resp = flask_client.get("/api/v1/satellites/?orbit_type=INVALID")
     assert resp.status_code == 422
 
