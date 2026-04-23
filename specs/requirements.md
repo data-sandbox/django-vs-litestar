@@ -2,15 +2,22 @@
 
 ## Overview
 
-Build a satellite TLE (Two-Line Element) data pipeline with a REST API comparison between Django and Litestar frameworks.
+Build a satellite TLE (Two-Line Element) data pipeline with a REST API comparison across four Python web frameworks: Django (DRF), Litestar, FastAPI, and Flask (flask-smorest).
 
 The system:
 1. Fetches satellite TLE data from `https://tle.ivanstanojevic.me/`
 2. Stores raw and processed records in a PostgreSQL database (run via Docker Compose)
 3. Simulates 7-day historical data via backfill
-4. Exposes identical read-only REST API endpoints implemented in both Django (DRF) and Litestar for side-by-side comparison
+4. Exposes identical read-only REST API endpoints implemented in all four frameworks for side-by-side comparison
 
-**Framework comparison goal:** Both APIs expose the same endpoints and return the same response shapes. The comparison highlights differences in routing, serialization, dependency injection, and developer ergonomics between the two frameworks.
+**Framework comparison goal:** All four APIs expose the same endpoints and return the same response shapes. The comparison highlights differences in routing, serialization, dependency injection, query parameter validation, and developer ergonomics across the frameworks.
+
+| Framework | Port | Serialization | OpenAPI |
+|---|---|---|---|
+| Django (DRF) | 8000 | `Serializer` classes | `drf-spectacular` (3rd party) |
+| Litestar | 8001 | Pydantic + return-type annotation | Built-in |
+| FastAPI | 8002 | Pydantic + `response_model` | Built-in |
+| Flask (flask-smorest) | 8003 | marshmallow `Schema` + `@blp.response` | flask-smorest (extension) |
 
 ---
 
@@ -22,9 +29,9 @@ The primary deliverable for this project is a `README.md` intended to be read on
 
 The README combines two angles:
 
-1. **Quick start** — readers can clone, start the database, run backfill + process, and hit both servers. `curl` examples confirm identical JSON from both ports.
+1. **Quick start** — readers can clone, start the database, run backfill + process, and hit all four servers. `curl` examples confirm identical JSON from all ports.
 
-2. **Side-by-side code comparisons** — five concrete diffs showing how each framework handles the same concern:
+2. **Side-by-side code comparisons** — five concrete diffs showing how each framework handles the same concern across all four implementations:
    - Routing registration
    - Serialization / response schema declaration
    - Database session injection
@@ -102,7 +109,14 @@ For each `tle_record` that does not yet have a corresponding `processed_tle` row
 
 ### 4. REST API Endpoints
 
-Both the Django and Litestar implementations expose the same three endpoints under `/api/v1/`. Both servers run locally (not in Docker). Django defaults to port `8000`; Litestar defaults to port `8001`.
+All four implementations (Django, Litestar, FastAPI, Flask) expose the same three endpoints under `/api/v1/`. All servers run locally (not in Docker).
+
+| Framework | Port |
+|---|---|
+| Django | 8000 |
+| Litestar | 8001 |
+| FastAPI | 8002 |
+| Flask | 8003 |
 
 ---
 

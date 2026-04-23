@@ -126,5 +126,32 @@ def run_litestar() -> None:
     uvicorn.run("litestar_api.app:app", host=host, port=port, reload=False)
 
 
+@cli.command("run-fastapi")
+def run_fastapi() -> None:
+    """Start the FastAPI development server on port 8002 (blocking)."""
+    from core.logging_config import setup_logging
+
+    setup_logging()
+    import uvicorn
+
+    host = os.environ.get("FASTAPI_HOST", "127.0.0.1")
+    port = int(os.environ.get("FASTAPI_PORT", "8002"))
+    uvicorn.run("fastapi_api.app:app", host=host, port=port, reload=False)
+
+
+@cli.command("run-flask")
+def run_flask() -> None:
+    """Start the Flask development server on port 8003 (blocking)."""
+    from core.logging_config import setup_logging
+
+    setup_logging()
+    from flask_api.app import create_app
+
+    host = os.environ.get("FLASK_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLASK_PORT", "8003"))
+    flask_app = create_app()
+    flask_app.run(host=host, port=port)
+
+
 if __name__ == "__main__":
     cli()

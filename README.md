@@ -1,6 +1,6 @@
-# Which API? A Django vs Litestar Comparison
+# Which API? A Django, Litestar, FastAPI, Flask Comparison
 
-The project creates a satellite TLE pipeline implemented twice — once with **Django**, once with **Litestar** — sharing a single SQLAlchemy data layer. It fetches live Two-Line Element (TLE) orbital data for the ISS and NOAA 19, processes it with `sgp4` to compute apogee, perigee, period, and orbit type, then serves the results through identical REST API endpoints in both frameworks. The goal is a concrete, side-by-side comparison of how each framework handles routing, serialization, dependency injection, and error handling.
+The project creates a satellite TLE pipeline implemented four times — with **Django**, **Litestar**, **FastAPI**, and **Flask** — sharing a single SQLAlchemy data layer. It fetches live Two-Line Element (TLE) orbital data for the ISS and NOAA 19, processes it with `sgp4` to compute apogee, perigee, period, and orbit type, then serves the results through identical REST API endpoints in all four frameworks. The goal is a concrete, side-by-side comparison of how each framework handles routing, serialization, dependency injection, and error handling.
 
 ---
 
@@ -34,21 +34,27 @@ Expected log output (structured JSON):
 {"timestamp": "2026-04-20T...", "level": "INFO", "event": "process complete", "processed": 2, "errors": 0}
 ```
 
-### 3 — Run both APIs
+### 3 — Run all four APIs
 
-In two separate terminals:
+In four separate terminals:
 
 ```bash
-uv run python main.py run-django     # http://localhost:8000
-uv run python main.py run-litestar   # http://localhost:8001
+uv run python main.py run-django      # http://localhost:8000
+uv run python main.py run-litestar    # http://localhost:8001
+uv run python main.py run-fastapi     # http://localhost:8002
+uv run python main.py run-flask       # http://localhost:8003
 ```
 
-Both servers read from the same PostgreSQL tables. The same request to either port returns the same JSON:
+All servers read from the same PostgreSQL tables. The same request to any port returns the same JSON:
 
 ```bash
 curl http://localhost:8000/api/v1/satellites/        # Django
 curl http://localhost:8001/api/v1/satellites/        # Litestar
+curl http://localhost:8002/api/v1/satellites/        # FastAPI
+curl http://localhost:8003/api/v1/satellites/        # Flask
 ```
+
+Interactive OpenAPI docs are at `/docs` on every server.
 
 
 ---
@@ -73,16 +79,18 @@ core/processing.py         — sgp4 propagation, orbit classification (LEO/MEO/G
 PostgreSQL: processed_tle  — apogee, perigee, period, orbit_type
     │
     ├──▶  django_api/   (port 8000)   DRF APIView + plain Serializer
-    └──▶  litestar_api/ (port 8001)   Litestar Controller + Pydantic schemas
+    ├──▶  litestar_api/ (port 8001)   Litestar Controller + Pydantic schemas
+    ├──▶  fastapi_api/  (port 8002)   FastAPI APIRouter + Pydantic schemas
+    └──▶  flask_api/    (port 8003)   flask-smorest Blueprint + marshmallow schemas
 ```
 
-Both framework layers are read-only. All writes happen through `core/`.
+All four framework layers are read-only. All writes happen through `core/`.
 
 ---
 
 ## API Endpoints
 
-All three endpoints are available on both ports with identical request/response shapes.
+All three endpoints are available on all four ports with identical request/response shapes.
 
 | Endpoint | Description |
 |---|---|
@@ -142,7 +150,7 @@ curl "http://localhost:8000/api/v1/satellites/99999/"
 
 ## Framework Comparison
 
-Both implementations live in the same repository and share a single data layer (`core/`). The differences below are purely about what each framework requires to expose the same endpoint.
+All four implementations live in the same repository and share a single data layer (`core/`). The differences below are purely about what each framework requires to expose the same endpoint.
 
 ---
 
@@ -152,9 +160,7 @@ Both implementations live in the same repository and share a single data layer (
 
 ```python
 # django_api/config/urls.py
-urlpatterns = [
-    path("api/v1/", include("django_api.satellites.urls")),
-]
+urlpatterns = [path("api/v1/", include("django_api.satellites.urls"))]
 
 # django_api/satellites/urls.py
 urlpatterns = [
@@ -181,28 +187,66 @@ class SatelliteController(Controller):
     def get_history(self, norad_id: int, ...) -> TleHistoryResponse: ...
 ```
 
+**FastAPI** — An `APIRouter` with `prefix`. The router is mounted onto the app; more-specific paths must be registered first to avoid ambiguous matching:
+
+```python
+router = APIRouter(prefix="/api/v1/satellites", tags=["satellites"])
+
+@router.get("/")
+def list_satellites(...) -> SatelliteListResponse: ...
+
+@router.get("/{norad_id}/history")   # registered before /{norad_id}
+def get_satellite_history(norad_id: int, ...) -> TleHistoryResponse: ...
+
+@router.get("/{norad_id}")
+def get_satellite(norad_id: int, ...) -> SatelliteDetail: ...
+
+# fastapi_api/app.py
+app.include_router(router)
+```
+
+**Flask (flask-smorest)** — A `Blueprint` with `url_prefix`. `MethodView` classes bind HTTP verbs to methods:
+
+```python
+blp = Blueprint("satellites", __name__, url_prefix="/api/v1/satellites")
+
+@blp.route("/")
+class SatelliteList(MethodView):
+    def get(self, query_args): ...
+
+@blp.route("/<int:norad_id>/history")
+class SatelliteHistory(MethodView):
+    def get(self, query_args, norad_id): ...
+
+@blp.route("/<int:norad_id>")
+class SatelliteDetail(MethodView):
+    def get(self, norad_id): ...
+
+# flask_api/app.py
+api.register_blueprint(blp)
+```
+
 ---
 
 ### 2. Serialization / Response Schemas
 
-**Django** — Serializer classes are defined separately from views. Serializers have no connection to the response type in the view signature; the contract is implicit:
+**Django** — Serializer classes are defined separately from views. The type contract between view and serializer is implicit:
 
 ```python
 # django_api/satellites/serializers.py
 class SatelliteListSerializer(Serializer):
-    norad_id       = IntegerField()
-    name           = CharField()
-    orbit_type     = CharField()
-    period_minutes = FloatField()
-    apogee_km      = FloatField()
-    perigee_km     = FloatField()
+    norad_id        = IntegerField()
+    name            = CharField()
+    orbit_type      = CharField()
+    period_minutes  = FloatField()
+    apogee_km       = FloatField()
+    perigee_km      = FloatField()
     inclination_deg = FloatField()
-    last_updated   = DateTimeField()
+    last_updated    = DateTimeField()
 
 # django_api/satellites/views.py
 class SatelliteListView(APIView):
     def get(self, request):
-        ...
         serializer = SatelliteListSerializer(rows, many=True)
         return Response({"count": count, "results": serializer.data, ...})
 ```
@@ -234,38 +278,69 @@ class SatelliteListResponse(BaseModel):
         ...
 ```
 
-No separate wiring step. The type annotation drives serialization, validation, and OpenAPI generation in one place.
+**FastAPI** — Same Pydantic `BaseModel` pattern as Litestar. The schema is declared via return-type annotation or explicitly on the `response_model` parameter:
+
+```python
+# fastapi_api/satellites/schemas.py — identical structure to litestar_api/
+class SatelliteListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    norad_id: int
+    ...
+
+# fastapi_api/satellites/router.py
+@router.get("/", response_model=SatelliteListResponse)
+def list_satellites(...):
+    ...
+```
+
+`ConfigDict(from_attributes=True)` allows both Litestar and FastAPI to serialize SQLAlchemy Row objects directly.
+
+**Flask (flask-smorest)** — Uses marshmallow `Schema` classes wired to routes via `@blp.arguments` (deserialize request) and `@blp.response` (serialize response):
+
+```python
+# flask_api/satellites/schemas.py
+class SatelliteListItemSchema(ma.Schema):
+    norad_id        = ma.fields.Int(dump_default=None)
+    name            = ma.fields.Str(dump_default=None)
+    orbit_type      = ma.fields.Str(dump_default=None)
+    period_minutes  = ma.fields.Float(dump_default=None)
+    apogee_km       = ma.fields.Float(dump_default=None)
+    perigee_km      = ma.fields.Float(dump_default=None)
+    inclination_deg = ma.fields.Float(dump_default=None)
+    last_updated    = ma.fields.DateTime(dump_default=None)
+
+# flask_api/satellites/views.py
+@blp.route("/")
+class SatelliteList(MethodView):
+    @blp.arguments(SatelliteListQuerySchema, location="query")
+    @blp.response(200, SatelliteListResponseSchema)
+    def get(self, query_args):
+        ...
+```
+
+The `@blp.response` decorator runs marshmallow serialization and registers the schema in the OpenAPI spec automatically.
 
 ---
 
 ### 3. Dependency Injection (Database Session)
 
-**Django** — No built-in DI system. Sessions are acquired manually as a context manager inside each view method:
+**Django** — No built-in DI system. Sessions are acquired manually inside each handler:
 
 ```python
 class SatelliteListView(APIView):
     def get(self, request):
-        with get_session() as session:   # called explicitly in every handler
+        with get_session() as session:   # repeated in every handler
             rows = session.execute(...).all()
-        serializer = SatelliteListSerializer(rows, many=True)
-        return Response(...)
+        return Response(SatelliteListSerializer(rows, many=True).data)
 ```
 
-Every view method repeats this `with get_session()` block. Session lifecycle (commit/rollback) is managed in `core/database.py`.
-
-**Litestar** — A `provide_db` generator is registered at app startup via `Provide`. Litestar resolves `db: Session` from the dependency graph and calls the generator — no `with` block required inside the handler:
+**Litestar** — A `provide_db` generator is registered at app startup via `Provide`. Litestar resolves `db: Session` from the dependency graph:
 
 ```python
 # litestar_api/app.py
-from collections.abc import Generator
-from litestar import Litestar
-from litestar.di import Provide
-from sqlalchemy.orm import Session
-from core.database import get_session
-
 def provide_db() -> Generator[Session, None, None]:
     with get_session() as session:
-        yield session            # commit/rollback handled here
+        yield session
 
 app = Litestar(
     route_handlers=[SatelliteController],
@@ -273,46 +348,73 @@ app = Litestar(
 )
 
 # litestar_api/satellites/controllers.py
-class SatelliteController(Controller):
     @get("", sync_to_thread=False)
     def list_satellites(self, db: Session, ...) -> SatelliteListResponse:
         rows = db.execute(...).all()   # db injected automatically
-        ...
+```
+
+**FastAPI** — Uses `Depends()`. The dependency is a generator that yields a session; FastAPI manages teardown automatically:
+
+```python
+# fastapi_api/satellites/router.py
+def get_db() -> Generator[Session, None, None]:
+    with get_session() as session:
+        yield session
+
+@router.get("/", response_model=SatelliteListResponse)
+def list_satellites(
+    db: Annotated[Session, Depends(get_db)],
+    ...
+):
+    rows = db.execute(...).all()
+```
+
+**Flask** — No DI system. Like Django, sessions are acquired manually. The module-level `get_session` reference is patchable for testing:
+
+```python
+@blp.route("/")
+class SatelliteList(MethodView):
+    @blp.arguments(SatelliteListQuerySchema, location="query")
+    @blp.response(200, SatelliteListResponseSchema)
+    def get(self, query_args):
+        with get_session() as session:   # repeated in every handler
+            rows = session.execute(...).all()
+        return {"count": count, "results": list(rows), ...}
 ```
 
 ---
 
 ### 4. 404 Error Handling
 
-**Django** — Raise DRF's `NotFound` exception; DRF's exception handler serializes it to JSON:
+**Django** — Raise DRF's `NotFound`; DRF's exception handler serializes it:
 
 ```python
 from rest_framework.exceptions import NotFound
-
-class SatelliteDetailView(APIView):
-    def get(self, request, norad_id):
-        with get_session() as session:
-            row = session.execute(...).one_or_none()
-        if row is None:
-            raise NotFound(detail=f"Satellite with NORAD ID {norad_id} not found.")
-        return Response(SatelliteDetailSerializer(row).data)
+raise NotFound(detail=f"Satellite with NORAD ID {norad_id} not found.")
 ```
 
-**Litestar** — Raise Litestar's `NotFoundException`; it serializes identically:
+**Litestar** — Raise `NotFoundException`; identical wire format:
 
 ```python
 from litestar.exceptions import NotFoundException
-
-class SatelliteController(Controller):
-    @get("/{norad_id:int}")
-    def get_satellite(self, db: Session, norad_id: int) -> SatelliteDetail:
-        row = db.execute(...).one_or_none()
-        if row is None:
-            raise NotFoundException(detail=f"Satellite with NORAD ID {norad_id} not found.")
-        return SatelliteDetail.model_validate(row)
+raise NotFoundException(detail=f"Satellite with NORAD ID {norad_id} not found.")
 ```
 
-Both return `{"detail": "..."}` with a `404` status — the same wire format despite different exception classes.
+**FastAPI** — Raise `HTTPException`:
+
+```python
+from fastapi import HTTPException
+raise HTTPException(status_code=404, detail=f"Satellite with NORAD ID {norad_id} not found.")
+```
+
+**Flask** — Call `abort()`:
+
+```python
+from flask import abort
+abort(404, message=f"Satellite with NORAD ID {norad_id} not found.")
+```
+
+All four return `{"detail": "..."}` with a `404` status — the same wire format despite different APIs.
 
 ---
 
@@ -333,12 +435,10 @@ class SatelliteListView(APIView):
             page_size = int(request.query_params.get("page_size", 20))
         except ValueError:
             return Response({"detail": "page and page_size must be integers."}, status=400)
-        if not (1 <= page_size <= 100):
-            return Response({"detail": "page_size must be between 1 and 100."}, status=400)
         ...
 ```
 
-**Litestar** — Parameters are declared in the function signature with type annotations and default values. Litestar parses, coerces, and validates them automatically:
+**Litestar** — Parameters are declared in the function signature. Litestar validates them automatically and returns `400` on error:
 
 ```python
 from litestar.params import Parameter
@@ -354,30 +454,63 @@ from litestar.params import Parameter
         ...
 ```
 
-Invalid inputs return a structured `400` automatically. No manual parsing or branching.
+**FastAPI** — Same approach as Litestar; FastAPI uses Pydantic and returns `422` on error:
+
+```python
+_OrbitType = Literal["LEO", "MEO", "GEO", "HEO", "OTHER"]
+
+@router.get("/", response_model=SatelliteListResponse)
+def list_satellites(
+    db: Annotated[Session, Depends(get_db)],
+    orbit_type: _OrbitType | None = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+):
+    ...
+```
+
+**Flask (flask-smorest)** — A marshmallow `Schema` is used as the query-argument schema. flask-smorest validates it before calling the handler and returns `422` on error:
+
+```python
+class SatelliteListQuerySchema(ma.Schema):
+    orbit_type = ma.fields.Str(load_default=None, allow_none=True)
+    page       = ma.fields.Int(load_default=1, validate=ma.validate.Range(min=1))
+    page_size  = ma.fields.Int(load_default=20, validate=ma.validate.Range(min=1, max=100))
+
+    @ma.validates("orbit_type")
+    def validate_orbit_type(self, value: str | None, **kwargs: object) -> None:
+        if value is not None and value not in {"LEO", "MEO", "GEO", "HEO", "OTHER"}:
+            raise ma.ValidationError("Must be one of: LEO, MEO, GEO, HEO, OTHER.")
+
+@blp.route("/")
+class SatelliteList(MethodView):
+    @blp.arguments(SatelliteListQuerySchema, location="query")
+    def get(self, query_args):   # validated dict injected automatically
+        ...
+```
 
 ---
 
 ## Summary
 
-| Concern | Django REST Framework | Litestar |
-|---|---|---|
-| Routing | Two URL files + `.as_view()` | Single `Controller` class with decorators |
-| Serialization | Separate `Serializer` classes, wired manually | Return type annotation = schema = OpenAPI |
-| DB session injection | Manual `with get_session()` in every handler | `Provide(provide_db)` generator, injected via `db: Session` type hint |
-| 404 handling | `raise NotFound(detail=...)` | `raise NotFoundException(detail=...)` |
-| Query param validation | Manual parsing + branching | Annotated type hints, validated automatically |
-| OpenAPI / Swagger | Requires `drf-spectacular` (third-party) | Built in, zero config |
-| Boilerplate per endpoint | High (URL entry, view class, serializer class) | Low (method on controller + schema) |
-| Explicit control flow | High — visible in every handler | Low — framework handles lifecycle |
+| Concern | Django (DRF) | Litestar | FastAPI | Flask (flask-smorest) |
+|---|---|---|---|---|
+| Routing | Two URL files + `.as_view()` | `Controller` class with decorators | `APIRouter` + `include_router()` | `Blueprint` + `MethodView` |
+| Serialization | `Serializer` classes, wired manually | Return type = schema (Pydantic) | `response_model` on decorator (Pydantic) | `@blp.response` + marshmallow `Schema` |
+| DB session injection | Manual `with get_session()` per handler | `Provide(provide_db)` generator, injected via type hint | `Depends(get_db)` generator | Manual `with get_session()` per handler |
+| 404 handling | `raise NotFound(detail=...)` | `raise NotFoundException(detail=...)` | `raise HTTPException(status_code=404)` | `abort(404, message=...)` |
+| Query param validation | Manual parsing + branching | Annotated type hints, `400` on error | Annotated type hints, `422` on error | marshmallow `Schema` + `@blp.arguments`, `422` on error |
+| OpenAPI / Swagger | Requires `drf-spectacular` (third-party) | Built in, zero config | Built in, zero config | flask-smorest (extension, minimal config) |
+| Boilerplate per endpoint | High | Low | Low | Medium |
+| Validation error status | `400` | `400` | `422` | `422` |
 
-Both frameworks produce identical JSON responses from the same PostgreSQL data. The difference is in what the framework gives you for free vs. what you wire up yourself.
+All four frameworks produce identical JSON responses from the same PostgreSQL data. The differences are in what each framework provides for free versus what you wire up yourself.
 
 ---
 
 ## Architecture
 
-The core insight of this project is that **both frameworks are thin shells over a shared data layer**:
+The core insight of this project is that **all four frameworks are thin shells over a shared data layer**:
 
 ```
 core/models.py        ← SQLAlchemy models (schema source of truth)
@@ -386,7 +519,7 @@ core/ingestion.py     ← TLE fetch + upsert logic
 core/processing.py    ← sgp4 orbital calculations
 ```
 
-Neither Django nor Litestar owns the database models. Alembic manages all migrations. Django runs with `DATABASES = {}`, disabling its ORM entirely. This means adding a third framework (FastAPI, Flask, etc.) would only require writing the routing and serialization layer — the data model is already there.
+No framework owns the database models. Alembic manages all migrations. Django runs with `DATABASES = {}`, disabling its ORM entirely. Adding a new framework only requires writing the routing and serialization layer — the data model is already there.
 
 ---
 
@@ -398,13 +531,17 @@ Neither Django nor Litestar owns the database models. Alembic manages all migrat
 uv run pytest -v
 ```
 
+56 tests cover all four implementations using real PostgreSQL via [testcontainers](https://testcontainers-python.readthedocs.io/).
+
 ### Project structure
 
 ```
 core/               Shared pipeline logic (no framework dependency)
 django_api/         DRF implementation (port 8000)
 litestar_api/       Litestar implementation (port 8001)
-tests/              Shared test suite covering both frameworks
+fastapi_api/        FastAPI implementation (port 8002)
+flask_api/          Flask (flask-smorest) implementation (port 8003)
+tests/              Shared test suite covering all four frameworks
 alembic/            Database migrations
 specs/              Requirements, architecture, and implementation plan
 ```
