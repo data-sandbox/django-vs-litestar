@@ -4,14 +4,14 @@ from typing import Annotated, Literal
 from litestar import Controller, get
 from litestar.exceptions import NotFoundException
 from litestar.params import Parameter
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.queries import (
-    build_pagination_urls,
+from core.async_queries import (
     get_satellite_detail,
     get_satellite_history,
     get_satellite_list,
 )
+from core.queries import build_pagination_urls
 from litestar_api.satellites.schemas import (
     SatelliteDetail,
     SatelliteListItem,
@@ -28,16 +28,18 @@ class SatelliteController(Controller):
 
     path = "/api/v1/satellites"
 
-    @get("", sync_to_thread=False)
-    def list_satellites(
+    @get("")
+    async def list_satellites(
         self,
-        db: Session,
+        db: AsyncSession,
         orbit_type: _ORBIT_TYPES | None = None,
         page: Annotated[int, Parameter(ge=1)] = 1,
         page_size: Annotated[int, Parameter(ge=1, le=100)] = 20,
     ) -> SatelliteListResponse:
         """Return a paginated satellite list, optionally filtered by orbit type."""
-        count, rows = get_satellite_list(db, orbit_type=orbit_type, page=page, page_size=page_size)
+        count, rows = await get_satellite_list(
+            db, orbit_type=orbit_type, page=page, page_size=page_size
+        )
         next_url, prev_url = build_pagination_urls(
             "/api/v1/satellites/",
             page,
@@ -52,18 +54,18 @@ class SatelliteController(Controller):
             results=[SatelliteListItem.model_validate(row) for row in rows],
         )
 
-    @get("/{norad_id:int}", sync_to_thread=False)
-    def get_satellite(self, db: Session, norad_id: int) -> SatelliteDetail:
+    @get("/{norad_id:int}")
+    async def get_satellite(self, db: AsyncSession, norad_id: int) -> SatelliteDetail:
         """Return full orbital detail for the satellite identified by norad_id."""
-        row = get_satellite_detail(db, norad_id)
+        row = await get_satellite_detail(db, norad_id)
         if row is None:
             raise NotFoundException(detail=f"Satellite with NORAD ID {norad_id} not found.")
         return SatelliteDetail.model_validate(row)
 
-    @get("/{norad_id:int}/history", sync_to_thread=False)
-    def get_history(
+    @get("/{norad_id:int}/history")
+    async def get_history(
         self,
-        db: Session,
+        db: AsyncSession,
         norad_id: int,
         page: Annotated[int, Parameter(ge=1)] = 1,
         page_size: Annotated[int, Parameter(ge=1, le=100)] = 20,
@@ -71,7 +73,7 @@ class SatelliteController(Controller):
         to_date: date | None = None,
     ) -> TleHistoryResponse:
         """Return paginated TLE history for a satellite, filterable by date range."""
-        exists, count, rows = get_satellite_history(
+        exists, count, rows = await get_satellite_history(
             db,
             norad_id,
             from_date=from_date,

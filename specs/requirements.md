@@ -295,9 +295,10 @@ Update `pyproject.toml` with the following:
 |----------------------|--------------------------------------------------|
 | `click`              | CLI entry point                                  |
 | `python-dotenv`      | `.env` file loading                              |
-| `sqlalchemy`         | Shared ORM and DB access layer                   |
-| `alembic`            | Database migrations                              |
-| `psycopg2-binary`    | PostgreSQL driver                                |
+| `sqlalchemy`         | Shared ORM and DB access layer                                              |
+| `alembic`            | Database migrations                                                         |
+| `psycopg2-binary`    | Synchronous PostgreSQL driver (Django, Flask)                               |
+| `asyncpg`            | Async PostgreSQL driver (Litestar, FastAPI — required for `AsyncSession`)   |
 | `sgp4`               | TLE parsing and orbital propagation              |
 | `httpx`              | Async-capable HTTP client for TLE API calls      |
 | `python-json-logger` | Structured JSON logging                          |
@@ -309,9 +310,10 @@ Update `pyproject.toml` with the following:
 
 | Package           | Purpose                                               |
 |-------------------|-------------------------------------------------------|
-| `pytest`          | Test runner                                           |
-| `pytest-django`   | Django test fixtures and `django_db` marker           |
-| `pytest-asyncio`  | Async test support for Litestar                       |
+| `pytest`          | Test runner                                                                          |
+| `pytest-django`   | Django test fixtures and `django_db` marker                                          |
+| `pytest-asyncio`  | Async test support; `asyncio_mode = "auto"` in `pyproject.toml`                     |
+| `testcontainers`  | Spin up a real PostgreSQL container for the session-scoped `pg_container` fixture    |
 | `respx`           | Mock `httpx` requests in tests                        |
 | `factory-boy`     | Test data factories for `satellites` and `tle_records`|
 
@@ -322,8 +324,11 @@ Update `pyproject.toml` with the following:
 ### Setup
 
 - `tests/conftest.py` provides:
-  - A `test_db` fixture that creates a fresh in-memory SQLite database (or a temporary PostgreSQL schema) for each test session and applies Alembic migrations
+  - A `pg_container` fixture (session-scoped) that starts a `postgres:16` Docker container via `testcontainers`
+  - A `test_engine` fixture (session-scoped) that creates a sync SQLAlchemy engine, runs Alembic migrations, and patches `core.database` so all sync code uses the test DB
+  - An `async_test_engine` fixture (session-scoped) that derives an `asyncpg` engine from `test_engine` (ensuring migrations have already run), used by Litestar and FastAPI tests
   - A `db_session` fixture scoped to each test function
+  - A `make_patch_get_async_session(async_engine)` helper that returns a drop-in `@asynccontextmanager` replacement for `get_async_session()`, used to monkeypatch framework dependency providers
   - SQLAlchemy model factories via `factory-boy` for `Satellite`, `TleRecord`, and `ProcessedTle`
   - A `mock_tle_api` fixture using `respx` that mocks the two individual NORAD ID endpoints (`/api/tle/25544` and `/api/tle/33591`) with fixed response payloads for ISS (ZARYA) and NOAA 19
 
@@ -350,5 +355,11 @@ Update `pyproject.toml` with the following:
 - `GET /api/v1/satellites/{norad_id}/history/?from_date=2026-04-15&to_date=2026-04-17` returns only records in that date range
 
 **`test_litestar_api.py`**
-- Same test cases as `test_django_api.py`, exercising the Litestar implementation
-- Use Litestar's built-in `TestClient`
+- Same test cases as `test_django_api.py`, exercising the Litestar async implementation
+- Uses Litestar's built-in `TestClient` (sync wrapper around the ASGI app)
+- Monkeypatches `litestar_api.app.get_async_session` with `make_patch_get_async_session(async_test_engine)` so `provide_db` yields an `AsyncSession` on the test database
+
+**`test_fastapi_api.py`**
+- Same test cases as `test_django_api.py`, exercising the FastAPI async implementation
+- Uses FastAPI's `dependency_overrides` to replace `get_db` with an async generator that yields an `AsyncSession(async_test_engine)`
+- HTTP 422 is the expected status for invalid query parameters (FastAPI/OpenAPI convention)

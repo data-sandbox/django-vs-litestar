@@ -1,22 +1,23 @@
 """Tests for the Litestar API (Phase 6).
 
-All tests monkeypatch ``litestar_api.app.get_session`` so the ``provide_db``
-dependency uses the test database session rather than the live development DB.
+All tests monkeypatch ``litestar_api.app.get_async_session`` so the
+``provide_db`` dependency yields an ``AsyncSession`` connected to the test
+database instead of the live development database.
 """
 
 import pytest
 from litestar.testing import TestClient
 
 from litestar_api.app import create_app
-from tests.conftest import make_patch_get_session
+from tests.conftest import make_patch_get_async_session
 
 
 @pytest.fixture()
-def litestar_client(db_session, monkeypatch):
-    """Build a Litestar TestClient with get_session patched to the test session."""
+def litestar_client(db_session, async_test_engine, monkeypatch):
+    """Build a Litestar TestClient with get_async_session patched to the test engine."""
     monkeypatch.setattr(
-        "litestar_api.app.get_session",
-        make_patch_get_session(db_session),
+        "litestar_api.app.get_async_session",
+        make_patch_get_async_session(async_test_engine),
     )
     app = create_app()
     with TestClient(app=app) as client:

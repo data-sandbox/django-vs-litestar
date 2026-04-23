@@ -1,10 +1,10 @@
 """Tests for the FastAPI satellite API.
 
-Uses FastAPI's dependency_overrides mechanism to inject the test database session instead of the
-live development database.
+Uses FastAPI's dependency_overrides mechanism to inject an ``AsyncSession``
+connected to the test database instead of the live development database.
 
-FastAPI returns HTTP 422 (Unprocessable Entity) for query parameter validation errors, following the
-JSON Schema / OpenAPI convention.
+FastAPI returns HTTP 422 (Unprocessable Entity) for query parameter
+validation errors, following the JSON Schema / OpenAPI convention.
 """
 
 import pytest
@@ -14,12 +14,16 @@ from fastapi_api.satellites.router import get_db
 
 
 @pytest.fixture()
-def fastapi_client(db_session):
-    """Build a FastAPI TestClient with the DB dependency overridden to the test session."""
+def fastapi_client(db_session, async_test_engine):
+    """Build a FastAPI TestClient with get_db overridden to an AsyncSession on the test DB."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from fastapi_api.app import create_app
 
-    def override_get_db():
-        yield db_session
+    async def override_get_db():
+        async with AsyncSession(async_test_engine) as session:
+            async with session.begin():
+                yield session
 
     app = create_app()
     app.dependency_overrides[get_db] = override_get_db

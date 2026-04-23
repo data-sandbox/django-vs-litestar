@@ -1,24 +1,24 @@
-from collections.abc import Generator
+from collections.abc import AsyncGenerator
 
 from litestar import Litestar, get
 from litestar.di import Provide
 from litestar.openapi import OpenAPIConfig
 from litestar.openapi.plugins import SwaggerRenderPlugin
 from litestar.response import Redirect
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.database import get_session
+from core.database import get_async_session
 from litestar_api.satellites.controllers import SatelliteController
 
 
-def provide_db() -> Generator[Session, None, None]:
-    """Dependency provider: yields a SQLAlchemy session for the duration of the request."""
-    with get_session() as session:
+async def provide_db() -> AsyncGenerator[AsyncSession, None]:
+    """Dependency provider: yields an AsyncSession for the duration of the request."""
+    async with get_async_session() as session:
         yield session
 
 
-@get("/", include_in_schema=False, sync_to_thread=False)
-def root_redirect() -> Redirect:
+@get("/", include_in_schema=False)
+async def root_redirect() -> Redirect:
     """Redirect the root path to the Swagger UI docs."""
     return Redirect(path="/docs")
 

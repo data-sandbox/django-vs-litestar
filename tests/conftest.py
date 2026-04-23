@@ -2,18 +2,20 @@
 
 Start-up order
 --------------
-1. ``pg_container``   – session-scoped: starts postgres:16 in Docker
-2. ``test_engine``    – session-scoped: creates engine, runs Alembic migrations,
-                        patches ``core.database`` so ``get_session()`` uses the
-                        test DB for the entire pytest run.
-3. ``db_session``     – function-scoped: yields a ``Session``; truncates all
-                        tables after every test for isolation.
-4. Factory fixtures  – function-scoped: factory-boy factories wired to ``db_session``.
+1. ``pg_container``        – session-scoped: starts postgres:16 in Docker
+2. ``test_engine``         – session-scoped: creates sync engine, runs Alembic migrations,
+                             patches ``core.database`` so ``get_session()`` uses the
+                             test DB for the entire pytest run.
+3. ``async_test_engine``   – session-scoped: creates an asyncpg engine pointing at the
+                             same test database, used by FastAPI and Litestar tests.
+4. ``db_session``          – function-scoped: yields a ``Session``; truncates all
+                             tables after every test for isolation.
+5. Factory fixtures        – function-scoped: factory-boy factories wired to ``db_session``.
 """
 
 import os
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import UTC, datetime
 
 # ---------------------------------------------------------------------------
@@ -88,6 +90,23 @@ def test_engine(pg_container):
         os.environ["DATABASE_URL"] = original_db_url
     else:
         os.environ.pop("DATABASE_URL", None)
+
+
+@pytest.fixture(scope="session")
+def async_test_engine(test_engine):
+    """Create an async engine (asyncpg) pointing at the same test database.
+
+    Depends on ``test_engine`` to guarantee Alembic migrations have run first.
+    Used by FastAPI and Litestar tests to supply real ``AsyncSession`` objects
+    instead of going through the sync ``core.database`` module.
+    """
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    async_url = test_engine.url.set(drivername="postgresql+asyncpg")
+    engine = create_async_engine(async_url, poolclass=NullPool)
+    yield engine
+    engine.sync_engine.dispose()
 
 
 # ---------------------------------------------------------------------------
@@ -182,5 +201,22 @@ def make_patch_get_session(session: Session):
     @contextmanager
     def _patched():
         yield session
+
+    return _patched
+
+
+def make_patch_get_async_session(async_engine):
+    """Return a drop-in replacement for ``get_async_session()`` backed by *async_engine*.
+
+    Used by Litestar tests to patch ``litestar_api.app.get_async_session`` so
+    that ``provide_db`` yields an ``AsyncSession`` connected to the test database.
+    """
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    @asynccontextmanager
+    async def _patched():
+        async with AsyncSession(async_engine) as session:
+            async with session.begin():
+                yield session
 
     return _patched
